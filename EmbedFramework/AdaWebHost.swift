@@ -131,8 +131,8 @@ public class AdaWebHost: NSObject {
         self.reachability = Reachability()!
         super.init()
         
-        reachability.whenReachable = { _ in
-            self.isInOfflineMode = false
+        reachability.whenReachable = { [weak self] _ in
+            self?.isInOfflineMode = false
         }
         
         reachability.whenUnreachable = { [weak self] _ in
@@ -398,7 +398,11 @@ extension AdaWebHost {
         userContentController.add(self, name: "zdChatterAuthCallbackHandler")
         userContentController.add(self, name: "chatFrameTimeoutCallbackHandler")
         
-        DispatchQueue.main.asyncAfter(deadline: .now() + webViewTimeout) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + webViewTimeout) { [weak self] in
+            guard let self = self, let webView = self.webView else {
+                return
+            }
+            
             if(!self.hasError && webView.isLoading){
                 webView.stopLoading();
                 self.webViewLoadingErrorCallback?(AdaWebHostError.WebViewTimeout)
@@ -407,6 +411,14 @@ extension AdaWebHost {
         
        
         
+    }
+    
+    /// remove ofter deinit
+    public func removeMsgHandler() {
+        self.webView?.configuration.userContentController.removeScriptMessageHandler(forName: "embedReady")
+        self.webView?.configuration.userContentController.removeScriptMessageHandler(forName: "eventCallbackHandler")
+        self.webView?.configuration.userContentController.removeScriptMessageHandler(forName: "zdChatterAuthCallbackHandler")
+        self.webView?.configuration.userContentController.removeScriptMessageHandler(forName: "chatFrameTimeoutCallbackHandler")
     }
 }
 
@@ -534,8 +546,8 @@ extension AdaWebHost: WKScriptMessageHandler {
         } else if let webViewLoadingErrorCallback = self.webViewLoadingErrorCallback, messageName == "chatFrameTimeoutCallbackHandler" {
             webViewLoadingErrorCallback(AdaWebHostError.WebViewTimeout)
         } else if let zdChatterAuthCallback = self.zdChatterAuthCallback, messageName == "zdChatterAuthCallbackHandler" {
-            zdChatterAuthCallback() { token in
-                self.evalJS("window.zdTokenCallback(\"\(token)\");")
+            zdChatterAuthCallback() { [weak self] token in
+                self?.evalJS("window.zdTokenCallback(\"\(token)\");")
             }
         } else if messageName == "eventCallbackHandler" {
             if let event = message.body as? [String: Any] {
